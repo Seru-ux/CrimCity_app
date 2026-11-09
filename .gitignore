@@ -31,3 +31,5 @@ android/key.properties
 
 # Sonstiges
 .DS_Store
+# Widget Preview related
+.widget_preview/

@@ -1,130 +1,45 @@
-// lib/controllers/talent_controller.dart
-
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../models/talent_tree.dart';
 import '../services/talent_service.dart';
 
-final talentServiceProvider = Provider<TalentService>((ref) {
-  return TalentService(Supabase.instance.client);
-});
+part 'talent_controller.g.dart';
 
-final talentControllerProvider =
-StateNotifierProvider<TalentController, TalentUIState>((ref) {
-  return TalentController(ref.read(talentServiceProvider));
-});
+@riverpod
+TalentService talentService(TalentServiceRef ref) =>
+    TalentService(Supabase.instance.client);
 
-class TalentUIState {
-  final TalentState? state;
-  final bool isLoading;
-  final bool isSubmitting;
-  final String? error;
-  final String? lastMessage;
-
-  const TalentUIState({
-    this.state,
-    this.isLoading = false,
-    this.isSubmitting = false,
-    this.error,
-    this.lastMessage,
-  });
-
-  TalentUIState copyWith({
-    TalentState? state,
-    bool? isLoading,
-    bool? isSubmitting,
-    String? error,
-    String? lastMessage,
-    bool clearError = false,
-    bool clearMessage = false,
-  }) {
-    return TalentUIState(
-      state: state ?? this.state,
-      isLoading: isLoading ?? this.isLoading,
-      isSubmitting: isSubmitting ?? this.isSubmitting,
-      error: clearError ? null : (error ?? this.error),
-      lastMessage: clearMessage ? null : (lastMessage ?? this.lastMessage),
-    );
-  }
-}
-
-class TalentController extends StateNotifier<TalentUIState> {
-  final TalentService _service;
-
-  TalentController(this._service) : super(const TalentUIState()) {
-    load();
+@riverpod
+class TalentManager extends _ {
+  @override
+  FutureOr<TalentState> build() async {
+    return ref.watch(talentServiceProvider).getTalentState();
   }
 
-  Future<void> load() async {
-    state = state.copyWith(isLoading: true, clearError: true);
-    try {
-      final data = await _service.getTalentState();
-      state = state.copyWith(state: data, isLoading: false);
-    } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Talente konnten nicht geladen werden: $e',
-      );
-    }
-  }
-
-  Future<bool> unlockOrUpgrade(String talentId) async {
-    if (state.isSubmitting) return false;
-    state = state.copyWith(isSubmitting: true, clearError: true, clearMessage: true);
-    try {
-      final result = await _service.unlockOrUpgrade(talentId);
-      final success = result['success'] == true;
-      if (success) {
-        await load();
-        state = state.copyWith(
-          isSubmitting: false,
-          lastMessage: result['message'] as String?,
-        );
-      } else {
-        state = state.copyWith(
-          isSubmitting: false,
-          error: result['message'] as String? ?? 'Unbekannter Fehler',
-        );
+  Future<void> unlockOrUpgrade(String talentId) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final result = await ref
+          .read(talentServiceProvider)
+          .unlockOrUpgrade(talentId);
+      if (result['success'] != true) {
+        throw Exception(result['message'] ?? 'Fehler beim Talent-Kauf');
       }
-      return success;
-    } catch (e) {
-      state = state.copyWith(
-        isSubmitting: false,
-        error: 'Fehler beim Talent-Kauf: $e',
-      );
-      return false;
-    }
+      return ref.read(talentServiceProvider).getTalentState();
+    });
   }
 
-  Future<bool> respec({String payment = 'coins'}) async {
-    if (state.isSubmitting) return false;
-    state = state.copyWith(isSubmitting: true, clearError: true, clearMessage: true);
-    try {
-      final result = await _service.respec(payment: payment);
-      final success = result['success'] == true;
-      if (success) {
-        await load();
-        state = state.copyWith(
-          isSubmitting: false,
-          lastMessage: result['message'] as String?,
-        );
-      } else {
-        state = state.copyWith(
-          isSubmitting: false,
-          error: result['message'] as String? ?? 'Unbekannter Fehler',
-        );
+  Future<void> respec({String payment = 'coins'}) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final result = await ref
+          .read(talentServiceProvider)
+          .respec(payment: payment);
+      if (result['success'] != true) {
+        throw Exception(result['message'] ?? 'Fehler beim Respec');
       }
-      return success;
-    } catch (e) {
-      state = state.copyWith(
-        isSubmitting: false,
-        error: 'Fehler beim Respec: $e',
-      );
-      return false;
-    }
-  }
-
-  void clearMessages() {
-    state = state.copyWith(clearError: true, clearMessage: true);
+      return ref.read(talentServiceProvider).getTalentState();
+    });
   }
 }
